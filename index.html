@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -46,6 +45,14 @@ const PH = 22;                             // grosor de la paleta
 const PL = (ZONA.der - ZONA.izq) * 0.22;   // largo de la paleta
 const INSET = PH + 2 * GAP;                // margen para que las paletas no choquen en las esquinas
 
+// Cuñas triangulares en las 4 esquinas interiores (ángulo recto en la esquina, catetos pegados a los ladrillos)
+const LADO_CUNA = 65 * 1.5;                 // 97,5: el tamaño original (65) multiplicado por 1,5
+const CUNAS = [
+  { cx: ZONA.izq, cy: ZONA.arriba, sx: 1,  sy: 1 },
+  { cx: ZONA.der, cy: ZONA.arriba, sx: -1, sy: 1 },
+  { cx: ZONA.der, cy: ZONA.abajo,  sx: -1, sy: -1 },
+  { cx: ZONA.izq, cy: ZONA.abajo,  sx: 1,  sy: -1 }
+];
 const CX = LOG / 2, CY = LOG / 2;          // centro
 const R_PUNTO = PL / 4;                    // punto central: diámetro = media paleta
 const R_BOLA = 10;
@@ -289,6 +296,57 @@ function lanzarRayo(nx, ny, mortal) {
   rayo = { a0: a0, vida: DURACION_RAYO, mortal: mortal };
 }
 
+function puntoEnSegmento(px, py, ax, ay, qx, qy) {
+  const dx = qx - ax, dy = qy - ay;
+  const t = clamp(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy), 0, 1);
+  return { x: ax + t * dx, y: ay + t * dy };
+}
+
+// La bola rebota en las cuñas de las esquinas (sobre todo en la diagonal)
+function colisionCunas() {
+  for (let i = 0; i < CUNAS.length; i++) {
+    const c = CUNAS[i];
+    const u = (bx - c.cx) * c.sx, v = (by - c.cy) * c.sy; // coordenadas desde la esquina, hacia dentro
+    if (u + v > LADO_CUNA + R_BOLA * Math.SQRT2) continue; // lejos de la hipotenusa
+    const dentro = u >= 0 && v >= 0 && u + v <= LADO_CUNA;
+    let nx, ny, qx, qy;
+    if (dentro) {
+      // Caso raro (el centro quedó dentro): sacar la bola por la diagonal
+      nx = c.sx / Math.SQRT2;
+      ny = c.sy / Math.SQRT2;
+      const k = (LADO_CUNA - (u + v)) / Math.SQRT2;
+      qx = bx + nx * k;
+      qy = by + ny * k;
+    } else {
+      const ax = c.cx, ay = c.cy;
+      const b1x = c.cx + c.sx * LADO_CUNA, b1y = c.cy;
+      const c1x = c.cx, c1y = c.cy + c.sy * LADO_CUNA;
+      const pts = [
+        puntoEnSegmento(bx, by, ax, ay, b1x, b1y),
+        puntoEnSegmento(bx, by, b1x, b1y, c1x, c1y),
+        puntoEnSegmento(bx, by, c1x, c1y, ax, ay)
+      ];
+      let mejor = null, dmin = Infinity;
+      for (let j = 0; j < pts.length; j++) {
+        const d = Math.hypot(bx - pts[j].x, by - pts[j].y);
+        if (d < dmin) { dmin = d; mejor = pts[j]; }
+      }
+      if (dmin >= R_BOLA) continue;
+      qx = mejor.x;
+      qy = mejor.y;
+      nx = dmin > 1e-6 ? (bx - qx) / dmin : c.sx / Math.SQRT2;
+      ny = dmin > 1e-6 ? (by - qy) / dmin : c.sy / Math.SQRT2;
+    }
+    const vn = vx * nx + vy * ny;
+    if (vn < 0) {
+      vx -= 2 * vn * nx;
+      vy -= 2 * vn * ny;
+    }
+    bx = qx + nx * (R_BOLA + 0.01);
+    by = qy + ny * (R_BOLA + 0.01);
+  }
+}
+
 function colisiones() {
   // 1) Tocar el cuadrado: pierdes una vida
   if (bx - R_BOLA <= 0 || bx + R_BOLA >= LOG || by - R_BOLA <= 0 || by + R_BOLA >= LOG) {
@@ -318,6 +376,9 @@ function colisiones() {
       by = CY + ny * (lim + 0.01);
     }
   }
+
+  // 2b) Cuñas de las esquinas
+  colisionCunas();
 
   // 3) Paletas
   const lista = paletas();
@@ -667,6 +728,17 @@ function dibujar() {
       ctx.fillRect(b.x + g, b.y + g, b.w - 2 * g, b.h - 2 * g);
       ctx.globalAlpha = 1;
     }
+  });
+
+  // Cuñas de las esquinas
+  ctx.fillStyle = '#8a8a8a';
+  CUNAS.forEach((c) => {
+    ctx.beginPath();
+    ctx.moveTo(c.cx, c.cy);
+    ctx.lineTo(c.cx + c.sx * LADO_CUNA, c.cy);
+    ctx.lineTo(c.cx, c.cy + c.sy * LADO_CUNA);
+    ctx.closePath();
+    ctx.fill();
   });
 
   // Punto central

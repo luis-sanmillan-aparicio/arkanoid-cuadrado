@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -57,9 +58,11 @@ const VIDAS_INICIO = 3;
 const VIDAS_MAX = 10;
 const TOQUES_PARA_VIDA = 3;                // cada 3 toques en el centro sale algo: vida, muerte, vida, muerte...
 const R_CORAZON = 16;                      // radio de recogida del corazón
+const SEPARACION_CALAVERAS = 40 * Math.PI / 180; // las dos calaveras salen con más de 40° entre sus trayectorias
 const FACTOR_PALETA_GRANDE = 2;            // el regalo hace crecer la paleta el doble...
 const DURACION_PALETA_GRANDE = 90;         // ...durante 1 minuto y medio (segundos de juego)
 const DURACION_RAYO = 0.6;
+const DURACION_AVISO = 2;                  // segundos que se ve un cartel
 
 // ---------- Estado ----------
 let posicion = 0.5;   // 0 = horizontales a la izquierda y laterales arriba; 1 = derecha y abajo
@@ -71,6 +74,7 @@ let salidas = 0;         // cuántos objetos han salido del centro
 let calaveraCentro = false; // calavera cogida: espera en el centro hasta que lo toque la bola
 let paletaGrande = false;   // regalo cogido: paletas al doble durante un tiempo
 let tiempoPaleta = 0;       // segundos que le quedan a la paleta grande
+let aviso = null;           // cartel temporal: { texto, color, vida }
 let estado = 'inicio'; // 'inicio' | 'espera' | 'juego' | 'fin' | 'ganado'
 let espera = 0;
 let bx = 0, by = 0, vx = 0, vy = 0;
@@ -223,13 +227,19 @@ function reiniciar() {
   calaveraCentro = false;
   paletaGrande = false;
   tiempoPaleta = 0;
+  aviso = null;
   rayo = null;
   prepararBola();
+}
+
+function mostrarAviso(texto, color) {
+  aviso = { texto: texto, color: color, vida: DURACION_AVISO };
 }
 
 function perderVida() {
   vidas--;
   rayo = null;
+  mostrarAviso('Bola fuera', '#fff');
   if (vidas <= 0) {
     estado = 'fin';
   } else {
@@ -362,8 +372,10 @@ function lanzarCorazon() {
   const tipo = ciclo[salidas % ciclo.length];
   salidas++;
   const cantidad = tipo === 'calavera' ? 2 : 1; // la muerte sale doble
+  const a0 = Math.random() * Math.PI * 2;
   for (let i = 0; i < cantidad; i++) {
-    const a = Math.random() * Math.PI * 2;
+    // La primera, en cualquier dirección. La segunda, aleatoria pero fuera de la franja de 40° a cada lado de la primera
+    const a = i === 0 ? a0 : a0 + SEPARACION_CALAVERAS + Math.random() * (Math.PI * 2 - 2 * SEPARACION_CALAVERAS);
     corazonesVida.push({ tipo: tipo, x: CX, y: CY, vx: Math.cos(a) * V / 2, vy: Math.sin(a) * V / 2 });
   }
 }
@@ -384,11 +396,16 @@ function actualizarCorazones(dt) {
       if (circuloContraRect(h.x, h.y, R_CORAZON, lista[j]).choca) {
         if (h.tipo === 'calavera') {
           calaveraCentro = true;
+          mostrarAviso('Rayo mortal', '#ff3b57');
         } else if (h.tipo === 'regalo') {
           cambiarPaleta(true);
+          mostrarAviso('Paleta extra: minuto y medio', '#ffd23f');
           tiempoPaleta = DURACION_PALETA_GRANDE; // otro regalo renueva el tiempo
+        } else if (vidas < VIDAS_MAX) {
+          vidas++;
+          mostrarAviso('Vida extra', '#5dff9a');
         } else {
-          vidas = Math.min(VIDAS_MAX, vidas + 1);
+          mostrarAviso('Vidas al máximo', '#5dff9a');
         }
         corazonesVida.splice(i, 1);
         break;
@@ -398,6 +415,10 @@ function actualizarCorazones(dt) {
 }
 
 function actualizar(dt) {
+  if (aviso) {
+    aviso.vida -= dt;
+    if (aviso.vida <= 0) aviso = null;
+  }
   ladrillos.forEach((b) => {
     if (b.flash > 0) b.flash = Math.max(0, b.flash - dt);
     if (b.muerte > 0) b.muerte = Math.max(0, b.muerte - dt);
@@ -595,6 +616,24 @@ function dibujarMensaje(l1, l2) {
   ctx.fillText(l2, x, y + tam * 1.1);
 }
 
+function dibujarAviso() {
+  if (!aviso) return;
+  const tam = Math.max(14, S * 0.042);
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, aviso.vida / 0.5); // se desvanece en el último medio segundo
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.font = 'bold ' + tam + 'px sans-serif';
+  ctx.lineWidth = tam * 0.2;
+  ctx.strokeStyle = '#000';
+  ctx.fillStyle = aviso.color;
+  const x = ox + S / 2, y = oy + S * 0.72;
+  ctx.strokeText(aviso.texto, x, y);
+  ctx.fillText(aviso.texto, x, y);
+  ctx.restore();
+}
+
 function dibujar() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
@@ -692,6 +731,7 @@ function dibujar() {
 
   dibujarVidas();
   dibujarDatos();
+  dibujarAviso();
 
   if (estado === 'inicio') dibujarMensaje('Arkanoid cuadrado', 'Toca para empezar');
   if (estado === 'fin') dibujarMensaje('Fin del juego', 'Toca para reiniciar');

@@ -60,7 +60,7 @@ const V_BASE = 315;                        // velocidad inicial de la bola (unid
 let V = V_BASE;                            // velocidad actual de la bola
 const KMH_INICIO = 50;                     // el marcador empieza en 50 km/h
 const SEG_ACELERACION = 1;                 // cada segundo...
-const FACTOR_ACELERACION = Math.pow(1.2, 1 / 300); // ...x1,000608 (compuesto: +20 % cada 5 minutos)
+const FACTOR_ACELERACION = Math.pow(1.4, 1 / 300); // ...x1,001122 (compuesto: +40 % cada 5 minutos)
 const VIDAS_INICIO = 3;
 const VIDAS_MAX = 10;
 const TOQUES_PARA_VIDA = 3;                // cada 3 toques en el centro sale algo: vida, muerte, vida, muerte...
@@ -504,7 +504,7 @@ function actualizar(dt) {
   }
 
   tiempo += dt;
-  // Cada segundo completo la velocidad se multiplica por 1,000608
+  // Cada segundo completo la velocidad se multiplica por 1,001122
   const nuevaV = V_BASE * Math.pow(FACTOR_ACELERACION, Math.floor(tiempo / SEG_ACELERACION));
   if (nuevaV !== V) {
     const k = nuevaV / V;
@@ -861,3 +861,4 @@ requestAnimationFrame(bucle);
 </script>
 </body>
 </html>
+

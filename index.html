@@ -54,7 +54,10 @@ const CUNAS = [
   { cx: ZONA.izq, cy: ZONA.abajo,  sx: 1,  sy: -1 }
 ];
 const CX = LOG / 2, CY = LOG / 2;          // centro
-const R_PUNTO = PL / 2;                    // punto central: diámetro = una paleta entera
+const R_PUNTO_MIN = PL / 4;                // punto central: tamaño original (diámetro = media paleta)
+const R_PUNTO_MAX = PL / 2;                // ...y tamaño máximo (diámetro = una paleta entera)
+const SEG_CICLO_PUNTO = 60;                // ciclo completo (crece y decrece) en 1 minuto de juego
+let R_PUNTO = R_PUNTO_MIN;                 // radio actual: oscila entre ambos
 const R_BOLA = 10;
 const V_BASE = 315;                        // velocidad inicial de la bola (unidades/segundo)
 let V = V_BASE;                            // velocidad actual de la bola
@@ -251,6 +254,7 @@ function reiniciar() {
   toquesCentro = 0;
   tiempo = 0;
   V = V_BASE;
+  R_PUNTO = R_PUNTO_MIN;
   corazonesVida = [];
   salidas = 0;
   calaveraCentro = false;
@@ -616,6 +620,8 @@ function actualizar(dt) {
   actualizarAranas(dt);
 
   tiempo += dt;
+  // El punto central oscila entre su tamaño original y el doble: ciclo de 1 minuto
+  R_PUNTO = R_PUNTO_MIN + (R_PUNTO_MAX - R_PUNTO_MIN) * (1 - Math.cos(2 * Math.PI * tiempo / SEG_CICLO_PUNTO)) / 2;
   // Cada segundo completo la velocidad se multiplica por 1,001122
   const nuevaV = V_BASE * Math.pow(FACTOR_ACELERACION, Math.floor(tiempo / SEG_ACELERACION));
   if (nuevaV !== V) {

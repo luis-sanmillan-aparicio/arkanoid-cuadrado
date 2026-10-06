@@ -462,9 +462,9 @@ function colisiones() {
 
 function lanzarCorazon() {
   // Sale del centro en dirección aleatoria, a la mitad de velocidad de la bola
-  // Una salida cada 3 toques. Secuencia: vida, muerte, regalo, muerte, vida, muerte, regalo...
-  const ciclo = ['vida', 'calavera', 'regalo', 'arana'];
-  const tipo = ciclo[salidas % ciclo.length];
+  // Una salida cada 3 toques. El tipo es aleatorio entre los cuatro: vida, calavera, regalo y araña
+  const tipos = ['vida', 'calavera', 'regalo', 'arana'];
+  const tipo = tipos[Math.floor(Math.random() * tipos.length)];
   salidas++;
   const cantidad = (tipo === 'calavera' || tipo === 'arana') ? 2 : 1; // la muerte sale doble
   const a0 = Math.random() * Math.PI * 2;

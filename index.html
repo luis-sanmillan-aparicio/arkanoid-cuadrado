@@ -92,7 +92,7 @@ let tiempoPaleta = 0;       // segundos que le quedan a la paleta grande
 let aviso = null;           // cartel temporal: { texto, color, vida }
 let aranaCentro = false;   // araña cogida: espera en el centro hasta que la toque la bola
 let aranas = [];
-let danos = { abajo: null, arriba: null, izq: null, der: null }; // { t, lado }
+let danos = { abajo: null, arriba: null, izq: null, der: null }; // { t, ini, fin }: tramo que conserva, en fracción del largo (1 = entera, 0,5 = mitad, 0,25 = mínimo)
 let estado = 'inicio'; // 'inicio' | 'espera' | 'juego' | 'fin' | 'ganado'
 let espera = 0;
 let bx = 0, by = 0, vx = 0, vy = 0;
@@ -183,17 +183,17 @@ function paletas() {
     { tipo: 'izq',     x: ZONA.izq + GAP,        y: py,                    w: PH, h: L },
     { tipo: 'der',     x: ZONA.der - GAP - PH,   y: py,                    w: PH, h: L }
   ];
-  // Paleta dañada: se queda con la mitad contraria a la que tocó la araña
+  // Paleta dañada: conserva solo el tramo [ini, fin] de su largo
   lista.forEach((p) => {
     const d = danos[p.tipo];
     if (!d) return;
     p.dano = true;
     if (p.tipo === 'abajo' || p.tipo === 'arriba') {
-      p.w = L / 2;
-      if (d.lado < 0) p.x += L / 2;
+      p.x += d.ini * L;
+      p.w = (d.fin - d.ini) * L;
     } else {
-      p.h = L / 2;
-      if (d.lado < 0) p.y += L / 2;
+      p.y += d.ini * L;
+      p.h = (d.fin - d.ini) * L;
     }
   });
   return lista;
@@ -499,6 +499,7 @@ function actualizarCorazones(dt) {
           mostrarAviso('Plaga de arañas', '#b57bff');
         } else if (h.tipo === 'regalo') {
           cambiarPaleta(true);
+          danos = { abajo: null, arriba: null, izq: null, der: null }; // el regalo repara las paletas dañadas
           mostrarAviso('Paleta extra: minuto y medio', '#ffd23f');
           tiempoPaleta = DURACION_PALETA_GRANDE; // otro regalo renueva el tiempo
         } else if (vidas < VIDAS_MAX) {
@@ -538,19 +539,25 @@ function soltarAranas() {
 }
 
 function danarPaleta(p, a) {
-  if (danos[p.tipo]) return; // ya dañada: no se acumula
   const horizontal = p.tipo === 'abajo' || p.tipo === 'arriba';
-  const mitad = horizontal ? p.x + p.w / 2 : p.y + p.h / 2;
-  const lado = (horizontal ? a.x : a.y) < mitad ? -1 : 1; // -1: pierde la mitad izquierda/superior
-  // Se olvida la paleta doble: todas vuelven al tamaño original y empieza el minuto de daño
+  const d = danos[p.tipo];
+  let ini = d ? d.ini : 0;
+  let fin = d ? d.fin : 1;
+  // Cada toque quita la mitad del tramo que queda, por el lado tocado, hasta un cuarto como mínimo
+  if (fin - ini > 0.25 + 1e-6) {
+    const mitad = horizontal ? p.x + p.w / 2 : p.y + p.h / 2;
+    const m = (ini + fin) / 2;
+    if ((horizontal ? a.x : a.y) < mitad) ini = m; else fin = m;
+  }
+  // Se olvida la paleta doble: todas vuelven al tamaño original y empieza (o se renueva) el minuto de daño
   cambiarPaleta(false);
   tiempoPaleta = 0;
-  danos[p.tipo] = { t: DURACION_DANO, lado: lado };
+  danos[p.tipo] = { t: DURACION_DANO, ini: ini, fin: fin };
   mostrarAviso('Paleta dañada', '#b57bff');
 }
 
 function actualizarAranas(dt) {
-  const lista = paletas();
+  let lista = paletas();
   for (let i = aranas.length - 1; i >= 0; i--) {
     const a = aranas[i];
     if (a.fase === 'sale') {
@@ -575,6 +582,7 @@ function actualizarAranas(dt) {
       for (let j = 0; j < lista.length; j++) {
         if (circuloContraRect(a.x, a.y, R_ARANA, lista[j]).choca) {
           danarPaleta(lista[j], a);
+          lista = paletas();
           aranas.splice(i, 1);     // desaparece al dañar
           break;
         }

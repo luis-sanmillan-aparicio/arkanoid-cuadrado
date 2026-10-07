@@ -78,6 +78,7 @@ const SEPARACION_ARANAS = 15 * Math.PI / 180;
 const ESPERA_ARANAS = 4;                   // segundos paradas a mitad de camino
 const R_ARANA = 16;
 const DURACION_DANO = 60;                  // la paleta dañada tarda 1 minuto en recuperarse
+const REPETICIONES_CICLO = 1;              // cada tipo sale 1 vez por ciclo (4 salidas), en orden sorteado
 
 // ---------- Estado ----------
 let posicion = 0.5;   // 0 = horizontales a la izquierda y laterales arriba; 1 = derecha y abajo
@@ -86,6 +87,7 @@ let toquesCentro = 0;
 let tiempo = 0;       // segundos jugados
 let corazonesVida = [];  // objetos que salen del centro: { tipo: 'vida' | 'calavera', ... }
 let salidas = 0;         // cuántos objetos han salido del centro
+let bolsa = [];          // salidas que quedan del ciclo actual, ya barajadas
 let calaveraCentro = false; // calavera cogida: espera en el centro hasta que lo toque la bola
 let paletaGrande = false;   // regalo cogido: paletas al doble durante un tiempo
 let tiempoPaleta = 0;       // segundos que le quedan a la paleta grande
@@ -257,6 +259,7 @@ function reiniciar() {
   R_PUNTO = R_PUNTO_MIN;
   corazonesVida = [];
   salidas = 0;
+  bolsa = [];
   calaveraCentro = false;
   aranaCentro = false;
   aranas = [];
@@ -460,11 +463,22 @@ function colisiones() {
   }
 }
 
+function siguienteTipo() {
+  if (bolsa.length === 0) {
+    const tipos = ['vida', 'calavera', 'regalo', 'arana'];
+    for (let r = 0; r < REPETICIONES_CICLO; r++) bolsa.push(...tipos);
+    for (let i = bolsa.length - 1; i > 0; i--) { // barajar el orden del ciclo
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = bolsa[i]; bolsa[i] = bolsa[j]; bolsa[j] = t;
+    }
+  }
+  return bolsa.pop();
+}
+
 function lanzarCorazon() {
   // Sale del centro en dirección aleatoria, a la mitad de velocidad de la bola
-  // Una salida cada 3 toques. El tipo es aleatorio entre los cuatro: vida, calavera, regalo y araña
-  const tipos = ['vida', 'calavera', 'regalo', 'arana'];
-  const tipo = tipos[Math.floor(Math.random() * tipos.length)];
+  // Una salida cada 3 toques. Ciclos de 4: uno de cada tipo (vida, calavera, regalo, araña) en orden sorteado
+  const tipo = siguienteTipo();
   salidas++;
   const cantidad = (tipo === 'calavera' || tipo === 'arana') ? 2 : 1; // la muerte sale doble
   const a0 = Math.random() * Math.PI * 2;
@@ -1025,3 +1039,4 @@ requestAnimationFrame(bucle);
 </script>
 </body>
 </html>
+

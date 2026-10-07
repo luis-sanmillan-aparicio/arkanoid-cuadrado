@@ -78,6 +78,13 @@ const SEPARACION_ARANAS = 15 * Math.PI / 180;
 const ESPERA_ARANAS = 4;                   // segundos paradas a mitad de camino
 const R_ARANA = 16;
 const DURACION_DANO = 60;                  // la paleta dañada tarda 1 minuto en recuperarse
+const NUM_BOLAS_FUEGO = 3;
+const SEPARACION_FUEGO = 30 * Math.PI / 180; // más de 30° entre cada par
+const V_FUEGO = 660;
+const R_FUEGO = 10;
+const MAX_PRENDER = 3;       // ladrillos que puede prender cada bola (el golpeado incluido)
+const DURACION_ARDER = 5;    // segundos hasta que el ladrillo se rompe
+const CONTAGIO_CADA = 2;     // segundos entre contagios
 const REPETICIONES_CICLO = 1;              // cada tipo sale 1 vez por ciclo (4 salidas), en orden sorteado
 
 // ---------- Estado ----------
@@ -94,6 +101,8 @@ let tiempoPaleta = 0;       // segundos que le quedan a la paleta grande
 let aviso = null;           // cartel temporal: { texto, color, vida }
 let aranaCentro = false;   // araña cogida: espera en el centro hasta que la toque la bola
 let aranas = [];
+let fuegoCentro = false;
+let bolasFuego = [];
 let danos = { abajo: null, arriba: null, izq: null, der: null }; // { t, ini, fin }: tramo que conserva, en fracción del largo (1 = entera, 0,5 = mitad, 0,25 = mínimo)
 let estado = 'inicio'; // 'inicio' | 'espera' | 'juego' | 'fin' | 'ganado'
 let espera = 0;
@@ -124,6 +133,7 @@ function crearLadrillos() {
     b.vivo = true;
     b.flash = 0;
     b.muerte = 0;
+    b.arde = 0; b.contagio = 0; b.origen = null; b.llamas = null; b.semilla = Math.random() * 1000;
   });
   return lista;
 }
@@ -263,6 +273,7 @@ function reiniciar() {
   calaveraCentro = false;
   aranaCentro = false;
   aranas = [];
+  fuegoCentro = false; bolasFuego = [];
   danos = { abajo: null, arriba: null, izq: null, der: null };
   paletaGrande = false;
   tiempoPaleta = 0;
@@ -316,15 +327,19 @@ function lanzarRayo(nx, ny, mortal) {
       // Con calavera: mata todos los ladrillos vivos del sector
       if (b.vivo) {
         b.vivo = false;
+        b.arde = 0;
         b.muerte = 0.6;
       }
     } else if (!b.vivo) {
       // Sin calavera: cura los que faltan
       b.vivo = true;
       b.flash = 0.6;
+    } else if (b.arde) {
+      // El rayo curativo apaga el fuego
+      b.arde = 0;
+      b.flash = 0.6;
     }
   });
-  if (mortal && ladrillos.every((l) => !l.vivo)) estado = 'ganado';
   rayo = { a0: a0, vida: DURACION_RAYO, mortal: mortal };
 }
 
@@ -401,6 +416,9 @@ function colisiones() {
         if (aranaCentro) {
           aranaCentro = false;
           soltarAranas();
+        } else if (fuegoCentro) {
+          fuegoCentro = false;
+          soltarFuego();
         } else {
           const mortal = calaveraCentro;
           calaveraCentro = false;
@@ -453,19 +471,19 @@ function colisiones() {
     const c = circuloContraRect(bx, by, R_BOLA, b);
     if (!c.choca) continue;
     b.vivo = false;
+    if (b.arde) { b.arde = 0; contagiar(b); }
     if (Math.abs(c.dx) > Math.abs(c.dy)) {
       vx = Math.abs(vx) * (c.dx >= 0 ? 1 : -1);
     } else {
       vy = Math.abs(vy) * (c.dy >= 0 ? 1 : -1);
     }
-    if (ladrillos.every((l) => !l.vivo)) estado = 'ganado';
     break;
   }
 }
 
 function siguienteTipo() {
   if (bolsa.length === 0) {
-    const tipos = ['vida', 'calavera', 'regalo', 'arana'];
+    const tipos = ['vida', 'calavera', 'regalo', 'arana', 'fuego'];
     for (let r = 0; r < REPETICIONES_CICLO; r++) bolsa.push(...tipos);
     for (let i = bolsa.length - 1; i > 0; i--) { // barajar el orden del ciclo
       const j = Math.floor(Math.random() * (i + 1));
@@ -480,7 +498,7 @@ function lanzarCorazon() {
   // Una salida cada 3 toques. Ciclos de 4: uno de cada tipo (vida, calavera, regalo, araña) en orden sorteado
   const tipo = siguienteTipo();
   salidas++;
-  const cantidad = (tipo === 'calavera' || tipo === 'arana') ? 2 : 1; // la muerte sale doble
+  const cantidad = (tipo === 'calavera' || tipo === 'arana' || tipo === 'fuego') ? 2 : 1; // la muerte sale doble
   const a0 = Math.random() * Math.PI * 2;
   for (let i = 0; i < cantidad; i++) {
     // La primera, en cualquier dirección. La segunda, aleatoria pero fuera de la franja de 40° a cada lado de la primera
@@ -506,16 +524,23 @@ function actualizarCorazones(dt) {
         if (h.tipo === 'calavera') {
           calaveraCentro = true;
           aranaCentro = false;
+          fuegoCentro = false;
           mostrarAviso('Rayo mortal', '#ff3b57');
         } else if (h.tipo === 'arana') {
           aranaCentro = true;
           calaveraCentro = false;
+          fuegoCentro = false;
           mostrarAviso('Plaga de arañas', '#b57bff');
         } else if (h.tipo === 'regalo') {
           cambiarPaleta(true);
           danos = { abajo: null, arriba: null, izq: null, der: null }; // el regalo repara las paletas dañadas
           mostrarAviso('Paleta extra: minuto y medio', '#ffd23f');
           tiempoPaleta = DURACION_PALETA_GRANDE; // otro regalo renueva el tiempo
+        } else if (h.tipo === 'fuego') {
+          fuegoCentro = true;
+          calaveraCentro = false;
+          aranaCentro = false;
+          mostrarAviso('Bolas de fuego', '#ff7a1a');
         } else if (vidas < VIDAS_MAX) {
           vidas++;
           mostrarAviso('Vida extra', '#5dff9a');
@@ -605,6 +630,75 @@ function actualizarAranas(dt) {
   }
 }
 
+function soltarFuego() {
+  const angulos = [];
+  let n = 0;
+  while (angulos.length < NUM_BOLAS_FUEGO && n++ < 1000) {
+    const a = Math.random() * Math.PI * 2;
+    if (angulos.every((b) => {
+      let d = Math.abs(a - b) % (Math.PI * 2);
+      if (d > Math.PI) d = Math.PI * 2 - d;
+      return d > SEPARACION_FUEGO;
+    })) angulos.push(a);
+  }
+  angulos.forEach((a) => bolasFuego.push({
+    x: CX, y: CY, a: a, estela: [], origen: { n: 0 },
+    vx: Math.cos(a) * V_FUEGO, vy: Math.sin(a) * V_FUEGO
+  }));
+}
+
+function prender(b, origen) {
+  if (!b.vivo || b.arde || origen.n >= MAX_PRENDER) return;
+  origen.n++;
+  b.arde = DURACION_ARDER;
+  b.contagio = CONTAGIO_CADA;
+  b.origen = origen;
+  b.llamas = crearLlamas();
+}
+
+// Los ladrillos forman un anillo: los vecinos son el anterior y el siguiente
+function contagiar(b) {
+  const k = ladrillos.indexOf(b), n = ladrillos.length;
+  prender(ladrillos[(k + 1) % n], b.origen);
+  prender(ladrillos[(k + n - 1) % n], b.origen);
+}
+
+function actualizarFuego(dt) {
+  for (let i = bolasFuego.length - 1; i >= 0; i--) {
+    const f = bolasFuego[i];
+    f.estela.push({ x: f.x, y: f.y });
+    if (f.estela.length > 14) f.estela.shift();
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+    let fin = f.x < 0 || f.x > LOG || f.y < 0 || f.y > LOG;
+    if (!fin) {
+      for (const b of ladrillos) {
+        if (b.vivo && !b.arde && circuloContraRect(f.x, f.y, R_FUEGO, b).choca) {
+          prender(b, f.origen);
+          fin = true;
+          break;
+        }
+      }
+    }
+    if (fin) bolasFuego.splice(i, 1);
+  }
+}
+
+function arderLadrillos(dt) {
+  ladrillos.forEach((b) => {
+    if (!b.vivo || !b.arde) return;
+    b.arde -= dt;
+    b.contagio -= dt;
+    if (b.contagio <= 0) { contagiar(b); b.contagio = CONTAGIO_CADA; }
+    if (b.arde <= 0) {
+      b.vivo = false;
+      b.arde = 0;
+      b.muerte = 0.6;
+      contagiar(b); // último contagio al morir
+    }
+  });
+}
+
 function actualizar(dt) {
   if (aviso) {
     aviso.vida -= dt;
@@ -640,6 +734,8 @@ function actualizar(dt) {
     }
   }
   actualizarAranas(dt);
+  actualizarFuego(dt);
+  arderLadrillos(dt);
 
   tiempo += dt;
   // El punto central oscila entre su tamaño original y el doble: ciclo de 1 minuto
@@ -778,6 +874,125 @@ function arana(cx, cy, r, claro, color) {
   ctx.fill();
 }
 
+function formaLlama(cx, cy, w, h, inc) {
+  const px = cx + inc * w, py = cy - h;
+  ctx.beginPath();
+  ctx.moveTo(cx - w, cy);
+  ctx.bezierCurveTo(cx - w, cy - h * 0.3, px - w * 0.4, py + h * 0.2, px, py);
+  ctx.bezierCurveTo(px + w * 0.4, py + h * 0.2, cx + w, cy - h * 0.3, cx + w, cy);
+  ctx.quadraticCurveTo(cx, cy + w * 0.4, cx - w, cy);
+  ctx.closePath();
+}
+
+function turbulencia(t, v, f) {
+  return 0.55 * Math.sin(t * v + f) + 0.3 * Math.sin(t * v * 2.3 + f * 1.7) + 0.15 * Math.sin(t * v * 4.7 + f * 0.4);
+}
+
+function crearLlamas() {
+  const l = [];
+  for (let i = 0; i < 20; i++) {
+    l.push({
+      fx: 0.04 + Math.random() * 0.92, fy: 0.08 + Math.random() * 0.84,
+      grande: Math.random() < 0.4, tam: 0.65 + Math.random() * 0.7,
+      f1: Math.random() * 6.28, v1: 0.016 + Math.random() * 0.026,
+      f2: Math.random() * 6.28, v2: 0.018 + Math.random() * 0.03,
+      f3: Math.random() * 6.28, v3: 0.014 + Math.random() * 0.024
+    });
+  }
+  return l;
+}
+
+function dibujarLlamas(b) {
+  const t = performance.now();
+  const q = 1 - b.arde / DURACION_ARDER;
+  const fac = q > 0.85 ? 1 - (q - 0.85) / 0.15 : 1; // se apagan al final
+  const L = Math.max(b.w, b.h);                      // escala por el lado largo
+  const gx = b.x + b.w / 2, gy = b.y + b.h * 0.4, gr = L * 1.1 * fac;
+  if (gr > 1) {
+    const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
+    g.addColorStop(0, 'rgba(255,100,0,' + 0.28 * fac + ')');
+    g.addColorStop(0.5, 'rgba(180,40,0,' + 0.12 * fac + ')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, gr, gr * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  b.llamas.forEach((a) => {
+    const fx = b.x + b.w * a.fx, fy = b.y + b.h * a.fy;
+    const h = Math.max(0, L * (a.grande ? 0.85 : 0.45) * a.tam * 0.7 * fac * (1 + turbulencia(t, a.v1, a.f1) * 0.34));
+    const w = Math.max(0, L * (a.grande ? 0.18 : 0.10) * a.tam * 0.7 * fac * (1 + turbulencia(t, a.v2, a.f2) * 0.4));
+    const al = (a.grande ? 0.95 : 0.78) * fac;
+    formaLlama(fx, fy, w, h, turbulencia(t, a.v3, a.f3) * 0.6);
+    const g = ctx.createLinearGradient(fx, fy - h, fx, fy);
+    g.addColorStop(0, 'rgba(255,255,210,' + al + ')');
+    g.addColorStop(0.2, 'rgba(255,240,60,' + al + ')');
+    g.addColorStop(0.5, 'rgba(255,120,10,' + al * 0.95 + ')');
+    g.addColorStop(0.78, 'rgba(210,30,5,' + al * 0.7 + ')');
+    g.addColorStop(1, 'rgba(100,8,0,0)');
+    ctx.fillStyle = g;
+    ctx.fill();
+  });
+  for (let i = 0; i < 8; i++) { // brasas
+    const s = b.semilla + i * 17.3 + 200;
+    const k = Math.sin(t * 0.008 + s) * 0.5 + 0.5;
+    ctx.fillStyle = 'rgba(' + Math.round(200 + 55 * k) + ',' + Math.round(50 + 100 * k) + ',0,' + k * fac * 0.95 + ')';
+    ctx.beginPath();
+    ctx.arc(b.x + b.w * (0.08 + 0.84 * i / 7), b.y + Math.sin(s) * 3, (2.2 + k * 1.5) * fac, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function iconoFuego(cx, cy, r) {
+  formaLlama(cx, cy + r * 0.8, r * 0.7, r * 1.8, 0.15);
+  const g = ctx.createLinearGradient(cx, cy - r, cx, cy + r * 0.8);
+  g.addColorStop(0, '#fff6b0');
+  g.addColorStop(0.45, '#ff9a1a');
+  g.addColorStop(1, '#d62a05');
+  ctx.fillStyle = g;
+  ctx.fill();
+}
+
+function dibujarBolaFuego(f) {
+  const t = performance.now();
+  f.estela.forEach((p, i) => {
+    const k = i / f.estela.length;
+    ctx.globalAlpha = k * 0.55;
+    ctx.fillStyle = 'rgba(255,' + Math.round(80 + 100 * k) + ',0,1)';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, R_FUEGO * k * 0.85, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  const fl = 0.85 + 0.15 * Math.sin(t * 0.05);
+  const g = ctx.createRadialGradient(f.x - R_FUEGO * 0.3, f.y - R_FUEGO * 0.35, 0, f.x, f.y, R_FUEGO);
+  g.addColorStop(0, 'rgba(255,255,200,' + fl + ')');
+  g.addColorStop(0.3, 'rgba(255,180,20,' + fl + ')');
+  g.addColorStop(0.65, 'rgba(230,50,0,' + fl * 0.9 + ')');
+  g.addColorStop(1, 'rgba(80,5,0,0.8)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(f.x, f.y, R_FUEGO, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save(); // llamas hacia atrás respecto al vuelo
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.a - Math.PI / 2);
+  for (let i = 0; i < 3; i++) {
+    const s = i * 4.1 + t * 0.007;
+    const fx = Math.sin(s) * R_FUEGO * 0.5;
+    const w = R_FUEGO * 0.55 * (0.6 + Math.sin(s) * 0.3);
+    const h = R_FUEGO * 1.6 * (0.7 + Math.sin(s + 2) * 0.3);
+    formaLlama(fx, -R_FUEGO, w, h, Math.sin(s + 1) * 0.4);
+    const g2 = ctx.createLinearGradient(fx, -R_FUEGO - h, fx, -R_FUEGO);
+    g2.addColorStop(0, 'rgba(255,255,180,0.9)');
+    g2.addColorStop(0.4, 'rgba(255,160,20,0.8)');
+    g2.addColorStop(1, 'rgba(200,40,0,0)');
+    ctx.fillStyle = g2;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function geometriaMarcador() {
   if (hud.modo === 'arriba') {
     const sw = (hud.w * 0.94) / 3;
@@ -887,7 +1102,8 @@ function dibujar() {
       }
       return;
     }
-    ctx.fillStyle = 'hsl(' + b.hue + ', 85%, 55%)';
+    const q = b.arde ? 1 - b.arde / DURACION_ARDER : 0;
+    ctx.fillStyle = 'hsl(' + b.hue + ',' + (85 - 60 * q) + '%,' + (55 - 38 * q) + '%)';
     ctx.fillRect(b.x + g, b.y + g, b.w - 2 * g, b.h - 2 * g);
     if (b.flash > 0) {
       ctx.globalAlpha = Math.min(1, b.flash / 0.6);
@@ -896,6 +1112,13 @@ function dibujar() {
       ctx.globalAlpha = 1;
     }
   });
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, LOG, LOG);
+  ctx.clip();
+  ladrillos.forEach((b) => { if (b.vivo && b.arde) dibujarLlamas(b); });
+  ctx.restore();
 
   // Cuñas de las esquinas
   ctx.fillStyle = '#8a8a8a';
@@ -931,6 +1154,14 @@ function dibujar() {
     ctx.stroke();
     arana(CX, CY, R_PUNTO, false);
   }
+  if (fuegoCentro) {
+    ctx.strokeStyle = '#ff7a1a';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(CX, CY, R_PUNTO + 3, 0, Math.PI * 2);
+    ctx.stroke();
+    iconoFuego(CX, CY, R_PUNTO * 0.8);
+  }
 
   // Paletas
   ctx.fillStyle = '#fff';
@@ -942,11 +1173,14 @@ function dibujar() {
   ctx.arc(bx, by, R_BOLA, 0, Math.PI * 2);
   ctx.fill();
 
+  bolasFuego.forEach(dibujarBolaFuego);
+
   // Corazones de vida en vuelo
   corazonesVida.forEach((h) => {
     if (h.tipo === 'calavera') calavera(h.x, h.y, 20, true);
     else if (h.tipo === 'arana') arana(h.x, h.y, 20, true);
     else if (h.tipo === 'regalo') regalo(h.x, h.y, 32);
+    else if (h.tipo === 'fuego') iconoFuego(h.x, h.y, 20);
     else corazon(h.x, h.y, 34, true);
   });
 
@@ -985,7 +1219,6 @@ function dibujar() {
 
   if (estado === 'inicio') dibujarMensaje('Arkanoid cuadrado', 'Toca para empezar');
   if (estado === 'fin') dibujarMensaje('Fin del juego', 'Toca para reiniciar');
-  if (estado === 'ganado') dibujarMensaje('¡Has ganado!', 'Toca para reiniciar');
 }
 
 // ---------- Arrastre relativo (horizontal) ----------
@@ -995,7 +1228,7 @@ let inicioPosicion = 0;
 let ultimoX = 0;
 
 canvas.addEventListener('pointerdown', (e) => {
-  if (estado === 'fin' || estado === 'ganado') reiniciar();
+  if (estado === 'fin') reiniciar();
   else if (estado === 'inicio') prepararBola();
   arrastrando = true;
   inicioPuntero = e.clientX;

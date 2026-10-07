@@ -944,12 +944,42 @@ function dibujarLlamas(b) {
 }
 
 function iconoFuego(cx, cy, r) {
-  formaLlama(cx, cy + r * 0.8, r * 0.7, r * 1.8, 0.15);
-  const g = ctx.createLinearGradient(cx, cy - r, cx, cy + r * 0.8);
-  g.addColorStop(0, '#fff6b0');
-  g.addColorStop(0.45, '#ff9a1a');
+  const X = (u) => cx + u * r, Y = (v) => cy + v * r;
+  // Llama exterior: 4 lenguas irregulares de distinta altura
+  ctx.beginPath();
+  ctx.moveTo(X(0), Y(0.85));
+  ctx.bezierCurveTo(X(-0.5), Y(0.85), X(-0.78), Y(0.5), X(-0.72), Y(0.1));
+  ctx.quadraticCurveTo(X(-0.7), Y(-0.2), X(-0.5), Y(-0.5));    // punta izquierda baja
+  ctx.quadraticCurveTo(X(-0.45), Y(-0.25), X(-0.3), Y(-0.1));
+  ctx.quadraticCurveTo(X(-0.4), Y(-0.55), X(-0.15), Y(-0.95)); // lengua alta
+  ctx.quadraticCurveTo(X(-0.1), Y(-0.6), X(0.05), Y(-0.3));
+  ctx.quadraticCurveTo(X(0), Y(-0.7), X(0.3), Y(-1));          // lengua más alta
+  ctx.quadraticCurveTo(X(0.3), Y(-0.55), X(0.38), Y(-0.15));
+  ctx.quadraticCurveTo(X(0.5), Y(-0.35), X(0.6), Y(-0.6));     // punta derecha
+  ctx.quadraticCurveTo(X(0.85), Y(-0.2), X(0.74), Y(0.2));
+  ctx.bezierCurveTo(X(0.7), Y(0.6), X(0.45), Y(0.85), X(0), Y(0.85));
+  ctx.closePath();
+  const g = ctx.createLinearGradient(cx, Y(-1), cx, Y(0.85));
+  g.addColorStop(0, '#ffd23f');
+  g.addColorStop(0.45, '#ff8a1a');
   g.addColorStop(1, '#d62a05');
   ctx.fillStyle = g;
+  ctx.fill();
+  // Núcleo interior, más claro y con dos puntas
+  ctx.beginPath();
+  ctx.moveTo(X(0), Y(0.8));
+  ctx.bezierCurveTo(X(-0.32), Y(0.8), X(-0.46), Y(0.55), X(-0.38), Y(0.25));
+  ctx.quadraticCurveTo(X(-0.34), Y(0), X(-0.14), Y(-0.3));
+  ctx.quadraticCurveTo(X(-0.12), Y(-0.1), X(-0.02), Y(0));
+  ctx.quadraticCurveTo(X(0), Y(-0.25), X(0.14), Y(-0.5));
+  ctx.quadraticCurveTo(X(0.2), Y(-0.2), X(0.3), Y(0.05));
+  ctx.quadraticCurveTo(X(0.45), Y(0.3), X(0.36), Y(0.5));
+  ctx.bezierCurveTo(X(0.3), Y(0.68), X(0.2), Y(0.8), X(0), Y(0.8));
+  ctx.closePath();
+  const g2 = ctx.createLinearGradient(cx, Y(-0.5), cx, Y(0.8));
+  g2.addColorStop(0, '#fffbd0');
+  g2.addColorStop(1, '#ffc02e');
+  ctx.fillStyle = g2;
   ctx.fill();
 }
 
@@ -1272,4 +1302,3 @@ requestAnimationFrame(bucle);
 </script>
 </body>
 </html>
-
